@@ -113,6 +113,7 @@ mise run test        # unit tests with the zsh on PATH
 mise run test:oldest # unit tests with zsh 5.1 in Docker
 mise run smoke       # Oh My Zsh in a temporary HOME, a real Tab through zsh/zpty
 mise run format      # shfmt
+mise run release     # on main: CHANGELOG.md, a release commit and a signed tag
 ```
 
 | File | Content |
@@ -124,6 +125,14 @@ mise run format      # shfmt
 | `tests/smoke.sh`, `tests/tab.zsh` | Oh My Zsh installation and a real Tab |
 
 Commits follow [Conventional Commits](https://www.conventionalcommits.org) (`feat`, `fix`, `chore`, `refactor`, `test`, `docs`, `ci`), with a subject of at most 72 characters.
+
+A release is made on main with `mise run release`, which asks git-cliff for the next version, writes CHANGELOG.md, commits it and creates a signed tag. Push both with `git push origin main vX.Y.Z`; the Release workflow then creates the GitHub Release with the notes of that version.
+
+## Versioning
+
+Releases are Git tags `vX.Y.Z` that follow [Semantic Versioning](https://semver.org), with the changes in [CHANGELOG.md](CHANGELOG.md). While the version is 0.x, a breaking change raises the minor version. To stay on one version, check out its tag in the clone, for example `git -C "${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/plugins/nx-complete-zsh" checkout v0.1.0`.
+
+A change is breaking when it raises a minimum version (Nx, the shell or jq), changes how the plugin is installed, drops `pnpm` or `npx`, or renames or removes one of these names: `_nx`, `_nx_runner`, the array `_nx_runner_completers` and the file `nx-complete-zsh.plugin.zsh`. Other names that start with `_nx_`, for example the caches, are internal and can change in any release.
 
 ## License
 
