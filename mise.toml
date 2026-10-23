@@ -1,0 +1,32 @@
+# Development tools, pinned so that CI, the Git hooks and your terminal run the same versions.
+# zsh itself is not available from mise: use the system zsh (macOS) or the zsh package (Linux).
+[tools]
+jq = "1.8.2"
+lefthook = "2.2.2"
+# A newer or older ShellCheck flags different things.
+shellcheck = "0.11.0"
+shfmt = "3.14.1"
+
+[tasks.check]
+description = "Lint and format check: zsh -n, ShellCheck, shfmt"
+run = "bash scripts/check.sh"
+
+[tasks.test]
+description = "Unit tests with the zsh on PATH"
+run = "bash scripts/test.sh"
+
+[tasks."test:oldest"]
+description = "Unit tests with the oldest supported zsh (5.1, needs Docker)"
+run = "bash scripts/test.sh 5.1"
+
+[tasks.smoke]
+description = "Install as an Oh My Zsh plugin in a temporary HOME and press Tab (needs network)"
+run = "bash tests/smoke.sh"
+
+[tasks.format]
+description = "Format the Bash scripts with shfmt"
+run = "bash scripts/check.sh --write"
+
+[tasks.hooks]
+description = "Install the Git hooks (pre-commit, commit-msg)"
+run = "lefthook install"
