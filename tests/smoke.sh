@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
 # Installs the plugin as an Oh My Zsh custom plugin, the way README.md describes it, into a
-# temporary HOME and starts real interactive shells: the start must print nothing, and after the
-# first prompt `nx`, `pnpm` and `npx` must have the completers of this plugin, also when a pnpm
-# completion is registered after Oh My Zsh in ~/.zshrc. Needs git and network access to clone
+# temporary HOME and starts real interactive shells: the start must print nothing, `nx` must have
+# the completer of this plugin, a real Tab after `nx` must complete from Nx, and a pnpm completion
+# that is registered after Oh My Zsh must stay as it is. Needs git and network access to clone
 # Oh My Zsh (OMZ_REPO selects another source, for example a local clone).
 #
 # Usage: bash tests/smoke.sh (or `mise run smoke`)
@@ -50,10 +50,9 @@ check "a new interactive shell starts without output" "" "$(shell -i -c exit 2>&
 
 # Commands on stdin run after a prompt, so the first-prompt hook has run.
 # shellcheck disable=SC2016 # zsh expands the line, not Bash
-report="$(printf '%s\n' 'print -r -- "nx=$_comps[nx] pnpm=$_comps[pnpm] npx=$_comps[npx] orig=$_nx_runner_completers[pnpm]"' |
+report="$(printf '%s\n' 'print -r -- "nx=$_comps[nx] pnpm=$_comps[pnpm] npx=$_comps[npx]"' |
     shell -i 2>/dev/null)"
-check "nx, pnpm and npx have the completers of the plugin" \
-    "nx=_nx pnpm=_nx_runner npx=_nx_runner orig=_pnpm_after_omz" "$report"
+check "nx has the completer of the plugin, pnpm keeps its own" "nx=_nx pnpm=_pnpm_after_omz npx=" "$report"
 
 check "Tab stays bound to the Oh My Zsh completion widget" "\"^I\" expand-or-complete" \
     "$(printf '%s\n' "bindkey '^I'" | shell -i 2>/dev/null)"
@@ -68,7 +67,5 @@ chmod +x "$ws/node_modules/.bin/nx"
 
 check "a real Tab after nx completes from Nx" ok \
     "$(zsh -f "$repo_dir/tests/tab.zsh" "$home" "$ws/apps/app" 'nx bu' 'nx build-only')"
-check "a real Tab after pnpm nx completes from Nx" ok \
-    "$(zsh -f "$repo_dir/tests/tab.zsh" "$home" "$ws" 'pnpm nx bu' 'pnpm nx build-only')"
 
 exit "$failed"

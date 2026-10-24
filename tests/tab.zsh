@@ -2,7 +2,7 @@
 #
 # Presses Tab in a real interactive zsh on a pseudo terminal (zsh/zpty) and prints `ok` when the
 # command line then contains the expected text. Used by tests/smoke.sh, because only the real
-# completion widget shows that compinit, the autoloaded _nx and the pnpm wrapper work together.
+# completion widget shows that compinit and the autoloaded _nx work together.
 #
 # Usage: zsh -f tests/tab.zsh <home> <directory> <typed text> <expected text>
 

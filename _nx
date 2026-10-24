@@ -7,8 +7,9 @@
 # every nx command keeps current).
 #
 # compinit registers this file for `nx` through the #compdef line, and zsh loads it at the first
-# Tab, so a new shell pays nothing for it. nx-complete-zsh.plugin.zsh adds `pnpm nx`,
-# `pnpm exec nx` and `npx nx`. The helpers are defined once, on the first call.
+# Tab, so a new shell pays nothing for it. The helpers are defined once, on the first call. After a
+# runner such as `pnpm exec nx`, a completion that hands the shifted words to _normal reaches this
+# function too, because it reads $words.
 
 # Caches for the life of the shell, keyed by file path and checked against the file mtime.
 # Keys that join two names use a tab: $'\t' is not expanded inside a subscript.

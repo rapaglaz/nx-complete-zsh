@@ -1,6 +1,6 @@
 # nx-complete-zsh
 
-Tab completion for [Nx](https://nx.dev) in zsh: `nx`, `pnpm nx`, `pnpm exec nx` and `npx nx`, also from a subdirectory of the workspace. Commands, projects, targets and generator names come from the Nx of the workspace. The plugin adds the options of generators with their values and the configurations of targets, which Nx does not complete.
+Tab completion for [Nx](https://nx.dev) in zsh: `nx`, also from a subdirectory of the workspace. Commands, projects, targets and generator names come from the Nx of the workspace. The plugin adds the options of generators with their values and the configurations of targets, which Nx does not complete.
 
 For fish, see [nx-complete-fish](https://github.com/rapaglaz/nx-complete-fish).
 
@@ -17,9 +17,10 @@ For fish, see [nx-complete-fish](https://github.com/rapaglaz/nx-complete-fish).
 | `nx run app:build:<Tab>` | `app:build:production`, `app:build:development` | project graph |
 | `nx build app -c <Tab>`, `--configuration=<Tab>` | the configurations of the target | project graph |
 | `nx run-many -t build,test -c <Tab>` | the configurations of these targets in all projects | project graph |
-| `pnpm nx ...`, `pnpm exec nx ...`, `npx nx ...` | the same as `nx ...` | |
 
-Other `pnpm` and `npx` commands keep the completion that they had before. Outside an Nx workspace, `nx <Tab>` completes file names.
+Outside an Nx workspace, `nx <Tab>` completes file names.
+
+The plugin completes the command `nx` only, like the completion script of Nx itself. Put `node_modules/.bin` of the workspace on `PATH` (see [Troubleshooting](#troubleshooting)), so that `nx` runs and completes directly. Since 0.2.0 the plugin does not wrap `pnpm` and `npx` any more; `pnpm exec nx` and `npx nx` complete when the shell configuration hands the words after the runner to `_normal`, which then calls `_nx`.
 
 ## Requirements
 
@@ -30,7 +31,7 @@ Other `pnpm` and `npx` commands keep the completion that they had before. Outsid
 
 ## Installation
 
-The plugin can be loaded before or after `compinit`. A pnpm completion that is registered later in `~/.zshrc` is also wrapped, because the plugin finishes its setup at the first prompt.
+The plugin can be loaded before or after `compinit`.
 
 ### Oh My Zsh
 
@@ -94,7 +95,7 @@ Remove other Nx completions, for example the `nx-completion` plugin, because onl
 - **No projects or configurations.** The project graph does not exist yet, for example in a fresh clone. Run any `nx` command once, for example `pnpm nx show projects`.
 - **Only file names after `nx`.** The Nx of the workspace is older than 23.3, or `node_modules` is not installed.
 - **`nx <Tab>` does nothing after the installation.** `compinit -C` may reuse an old dump. Open a new shell; if that does not help, delete `~/.zcompdump*` and open a new shell.
-- **`nx` is not found, but `pnpm nx` works.** zsh completes `nx` also when it is not on `PATH`. To run `nx` without `pnpm`, put `node_modules/.bin` on `PATH`, for example with [mise](https://mise.jdx.dev) in the `mise.toml` of the workspace:
+- **`nx` is not found.** Nx is usually a dependency of the workspace, not a global command. Put `node_modules/.bin` on `PATH`, for example with [mise](https://mise.jdx.dev) in the `mise.toml` of the workspace:
 
   ```toml
   [env]
@@ -120,8 +121,8 @@ mise run release:tag     # on main after that merge: the signed tag vX.Y.Z
 | File | Content |
 | --- | --- |
 | `_nx` | the completion function (`#compdef nx`) |
-| `nx-complete-zsh.plugin.zsh` | adds the directory to `fpath`, registers `_nx` and wraps `pnpm` and `npx` |
-| `tests/nx_test.zsh` | `_nx` and the wrapper in a fake workspace with a fake Nx, `compadd` replaced by a stub |
+| `nx-complete-zsh.plugin.zsh` | adds the directory to `fpath` and registers `_nx` |
+| `tests/nx_test.zsh` | `_nx` in a fake workspace with a fake Nx, `compadd` replaced by a stub |
 | `tests/plugin_test.zsh` | the registration with the real `compinit`: before, after, without, `compinit -C` |
 | `tests/smoke.sh`, `tests/tab.zsh` | Oh My Zsh installation and a real Tab |
 
@@ -136,7 +137,7 @@ A release takes two steps, because `main` accepts changes only through pull requ
 
 Releases are Git tags `vX.Y.Z` that follow [Semantic Versioning](https://semver.org), with the changes in [CHANGELOG.md](CHANGELOG.md). While the version is 0.x, a breaking change raises the minor version. To stay on one version, check out its tag in the clone, for example `git -C "${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/plugins/nx-complete-zsh" checkout v0.1.0`.
 
-A change is breaking when it raises a minimum version (Nx, the shell or jq), changes how the plugin is installed, drops `pnpm` or `npx`, or renames or removes one of these names: `_nx`, `_nx_runner`, the array `_nx_runner_completers` and the file `nx-complete-zsh.plugin.zsh`. Other names that start with `_nx_`, for example the caches, are internal and can change in any release.
+A change is breaking when it raises a minimum version (Nx, the shell or jq), changes how the plugin is installed, or renames or removes the function `_nx` or the file `nx-complete-zsh.plugin.zsh`. Other names that start with `_nx_`, for example the caches, are internal and can change in any release.
 
 ## License
 
