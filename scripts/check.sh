@@ -8,7 +8,8 @@
 
 set -uo pipefail
 
-cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
+# An empty CDPATH keeps cd from searching it and printing the directory.
+CDPATH='' cd -- "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
 
 zsh_files=(_nx nx-complete-zsh.plugin.zsh tests/*.zsh)
 bash_files=(scripts/*.sh tests/*.sh)
