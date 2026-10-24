@@ -1,9 +1,9 @@
 #!/usr/bin/env zsh
 #
-# Tests the completion function _nx and the pnpm/npx wrapper in a fake workspace: generator
-# options and values from schema.json, target configurations from the project graph, the hand-over
-# to NX_COMPLETE and the cache refresh. compadd, compset, _files and _default are replaced by
-# functions that print what they get, because the real ones work only inside a completion widget.
+# Tests the completion function _nx in a fake workspace: generator options and values from
+# schema.json, target configurations from the project graph, the hand-over to NX_COMPLETE and the
+# cache refresh. compadd, compset, _files and _default are replaced by functions that print what
+# they get, because the real ones work only inside a completion widget.
 #
 # Usage: zsh -f tests/nx_test.zsh (or `mise run test`)
 
@@ -80,9 +80,8 @@ compadd() {
 compset() { print -r -- "compset $*"; }
 _files() { print files; }
 _default() { print default; }
-_pnpm_original() { print pnpm-original; }
 compdef() { local fn=$1 cmd; shift; for cmd; do _comps[$cmd]=$fn; done; }
-typeset -gA _comps=(pnpm _pnpm_original)
+typeset -gA _comps
 
 source "$REPO_DIR/nx-complete-zsh.plugin.zsh"
 
@@ -136,21 +135,7 @@ rm -f "$ROOT/nx-call"
 check "nx g <Tab> (generator names) goes to Nx" "[S:] build app:" "$(complete_line _nx nx g '')"
 check "Nx sees the generate words" "zsh|nx|g||" "$(cat "$ROOT/nx-call")"
 
-rm -f "$ROOT/nx-call"
-check "pnpm nx completes like nx" $'compset -P *:*:\ndevelopment production' \
-  "$(complete_line _nx_runner pnpm nx run app:build:)"
-check "pnpm exec nx completes like nx" "ci production" \
-  "$(complete_line _nx_runner pnpm exec nx build lib -c '')"
-check "npx nx completes like nx" "[S:] build app:" "$(complete_line _nx_runner npx nx b)"
-check "other pnpm commands keep the pnpm completion" "pnpm-original" \
-  "$(complete_line _nx_runner pnpm install '')"
-check "pnpm n<Tab> on the nx word itself stays pnpm" "pnpm-original" \
-  "$(complete_line _nx_runner pnpm nx)"
-check "other npx commands get the default completion" "default" \
-  "$(complete_line _nx_runner npx tsc '')"
-
-source "$REPO_DIR/nx-complete-zsh.plugin.zsh"
-check "a second source keeps the original pnpm completer" "_pnpm_original" "$_nx_runner_completers[pnpm]"
+check "the plugin registers _nx for nx" "_nx" "$_comps[nx]"
 
 # Newer graph: the cached configurations are replaced in the same shell.
 complete_line _nx nx run app:build: >/dev/null
