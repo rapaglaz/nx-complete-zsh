@@ -24,8 +24,9 @@ expect() { # <pattern>
 
 # zpty joins its arguments into one command line, so every value is quoted.
 zpty shell "env -i HOME=${(q)home} ZDOTDIR=${(q)home} TERM=xterm PATH=${(q)PATH} zsh -i"
-# The marker is split in the typed text, so that only the output of print matches.
-zpty -w shell "cd ${(q)dir} && print NX_''READY"
+# A short prompt and a wide terminal keep the line from wrapping, because ZLE redraws a wrapped
+# line in pieces. The marker is split in the typed text, so that only the output of print matches.
+zpty -w shell "PROMPT='%# '; stty columns 200; cd ${(q)dir} && print NX_''READY"
 if ! expect '*NX_READY*'; then
   print -r -- "no prompt: ${(q+)buf}"
   zpty -d shell
