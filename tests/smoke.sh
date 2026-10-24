@@ -10,7 +10,7 @@
 
 set -euo pipefail
 
-repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+repo_dir="$(CDPATH='' cd -- "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 omz_repo="${OMZ_REPO:-https://github.com/ohmyzsh/ohmyzsh.git}"
 home="$(mktemp -d)"
 trap 'rm -rf "$home"' EXIT
