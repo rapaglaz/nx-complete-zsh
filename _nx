@@ -1,0 +1,312 @@
+#compdef nx
+#
+# Tab completion for Nx. Nx 23.3 and later complete commands, projects, targets and generator
+# names themselves (Tab runs the workspace-local nx with NX_COMPLETE=zsh). This function adds what
+# Nx leaves out and reads it with jq from the workspace: the options of a generator and their values
+# (its schema.json) and the configurations of a target (.nx/workspace-data/project-graph.json, which
+# every nx command keeps current).
+#
+# compinit registers this file for `nx` through the #compdef line, and zsh loads it at the first
+# Tab, so a new shell pays nothing for it. nx-complete-zsh.plugin.zsh adds `pnpm nx`,
+# `pnpm exec nx` and `npx nx`. The helpers are defined once, on the first call.
+
+# Caches for the life of the shell, keyed by file path and checked against the file mtime.
+# Keys that join two names use a tab: $'\t' is not expanded inside a subscript.
+if (( ! $+_nx_sep )); then
+  zmodload -F zsh/stat b:zstat 2>/dev/null
+  typeset -g _nx_sep=$'\t' _nx_graph_key
+  typeset -ga _nx_projects
+  typeset -gA _nx_project_roots _nx_target_configs _nx_schema_paths _nx_schema_mtimes _nx_schema_lines
+fi
+
+# Sets REPLY to the workspace root: the nearest directory with nx.json, so Tab also works in apps/foo.
+(( $+functions[_nx_root] )) || _nx_root() {
+  local dir=$PWD
+  while :; do
+    if [[ -f $dir/nx.json ]]; then
+      REPLY=$dir
+      return 0
+    fi
+    [[ $dir == / ]] && return 1
+    dir=${dir:h}
+  done
+}
+
+# Sets REPLY to the nx binary of the workspace, but only when that Nx answers NX_COMPLETE: an older
+# Nx ignores the variable and would run the command that is being typed. 23.3 is the first version
+# checked to have it; the directory of the completion modules covers a version written differently.
+(( $+functions[_nx_native_bin] )) || _nx_native_bin() { # <root>
+  local base
+  for base in $1/node_modules $1/.nx/installation/node_modules; do
+    [[ -x $base/.bin/nx ]] || continue
+    if _nx_has_native_completion $base/nx; then
+      REPLY=$base/.bin/nx
+      return 0
+    fi
+  done
+  return 1
+}
+
+(( $+functions[_nx_has_native_completion] )) || _nx_has_native_completion() { # <nx package directory>
+  local -a match mbegin mend
+  [[ -d $1/dist/src/command-line/completion ]] && return 0
+  # $(<file) reads without a subprocess; the first "version" key of package.json is the package version.
+  [[ -r $1/package.json && $(<$1/package.json) =~ '"version"[[:space:]]*:[[:space:]]*"([0-9]+)\.([0-9]+)' ]] \
+    || return 1
+  (( match[1] > 23 || (match[1] == 23 && match[2] >= 3) ))
+}
+
+# Reads projects, their roots and the configurations of their targets from the project graph.
+(( $+functions[_nx_load_graph] )) || _nx_load_graph() { # <root>
+  local graph=$1/.nx/workspace-data/project-graph.json line
+  local -a mtime fields
+  [[ -f $graph ]] && zstat -A mtime +mtime -- $graph 2>/dev/null || return 1
+  [[ $_nx_graph_key == $graph:$mtime[1] ]] && return 0
+
+  _nx_projects=()
+  _nx_project_roots=()
+  _nx_target_configs=()
+  # Older graph files wrap the nodes in .graph.
+  for line in ${(f)"$(jq -r '
+      (.graph.nodes // .nodes // {})[] | .name as $p
+      | "P\t\($p)\t\(.data.root // "")",
+        (.data.targets // {} | to_entries[] | select((.value.configurations // {}) | length > 0)
+          | "C\t\($p)\t\(.key)\t\(.value.configurations | keys | join(" "))")
+    ' $graph 2>/dev/null)"}; do
+    fields=("${(@ps:\t:)line}")
+    case $fields[1] in
+      P) _nx_projects+=($fields[2]); _nx_project_roots[$fields[2]]=$fields[3] ;;
+      C) _nx_target_configs[$fields[2]$_nx_sep$fields[3]]=$fields[4] ;;
+    esac
+  done
+  _nx_graph_key=$graph:$mtime[1]
+}
+
+# Sets reply to the configurations of a target in one project or, without a project, in all of them.
+(( $+functions[_nx_configurations] )) || _nx_configurations() { # <target> [project]
+  local key
+  local -aU found
+  if [[ -n $2 ]]; then
+    found=(${=_nx_target_configs[$2$_nx_sep$1]})
+  else
+    for key in ${(k)_nx_target_configs}; do
+      [[ ${key#*$_nx_sep} == $1 ]] && found+=(${=_nx_target_configs[$key]})
+    done
+  fi
+  reply=($found)
+  (( $#reply ))
+}
+
+# Sets REPLY to the schema.json of a generator such as @nx/angular:component or its alias
+# @nx/angular:c. The collection is an installed package or a local plugin of the workspace.
+(( $+functions[_nx_generator_schema] )) || _nx_generator_schema() { # <root> <collection:generator>
+  local root=$1 spec=$2 collection=${2%%:*} name=${2#*:} manifest file schema
+  [[ $spec == ?*:?* ]] || return 1
+  if [[ -f $_nx_schema_paths[$root$_nx_sep$spec] ]]; then
+    REPLY=$_nx_schema_paths[$root$_nx_sep$spec]
+    return 0
+  fi
+
+  manifest=$root/node_modules/$collection/package.json
+  if [[ ! -f $manifest ]] && _nx_load_graph $root; then
+    local -a candidates=($root/${^${(v)_nx_project_roots}}/package.json(N))
+    (( $#candidates )) || return 1
+    manifest=$(jq -r --arg c $collection 'select(.name == $c) | input_filename' $candidates 2>/dev/null)
+    manifest=${manifest%%$'\n'*}
+  fi
+  [[ -f $manifest ]] || return 1
+
+  file=$(jq -r '.generators // .schematics // empty' $manifest 2>/dev/null)
+  [[ -n $file ]] && file=${manifest:h}/$file
+  [[ -f $file ]] || return 1
+  schema=$(jq -r --arg n $name '
+      first((.generators // {}) + (.schematics // {}) | to_entries[]
+        | select(.key == $n or ((.value.aliases // []) | index($n) != null)) | .value.schema) // empty
+    ' $file 2>/dev/null)
+  [[ -n $schema ]] && schema=${file:h}/$schema
+  [[ -f $schema ]] || return 1
+  _nx_schema_paths[$root$_nx_sep$spec]=$schema
+  REPLY=$schema
+}
+
+# Sets reply to one `name<TAB>kind<TAB>values<TAB>description` line per visible option of a schema;
+# kind is projects, enum (values lists them), boolean or value.
+(( $+functions[_nx_schema_options] )) || _nx_schema_options() { # <schema.json>
+  local schema=$1
+  local -a mtime
+  zstat -A mtime +mtime -- $schema 2>/dev/null || return 1
+  if [[ $_nx_schema_mtimes[$schema] != $mtime[1] ]]; then
+    _nx_schema_lines[$schema]=$(jq -r '
+        .properties // {} | to_entries[] | select(.value.visible != false and .value.hidden != true)
+        | (.value.enum // .value.items.enum) as $enum
+        | [ .key,
+            (if .value."x-dropdown" == "projects" then "projects"
+             elif $enum then "enum"
+             elif .value.type == "boolean" then "boolean"
+             else "value" end),
+            (($enum // []) | map(tostring) | join(" ")),
+            ((.value.description // "") | gsub("[[:space:]]+"; " ")) ]
+        | join("\t")
+      ' $schema 2>/dev/null)
+    _nx_schema_mtimes[$schema]=$mtime[1]
+  fi
+  reply=(${(f)_nx_schema_lines[$schema]})
+  (( $#reply ))
+}
+
+# Adds the values of a generator option; free text gets file names, like Nx does.
+(( $+functions[_nx_option_values] )) || _nx_option_values() { # <root> <kind> <enum values>
+  local -a values
+  case $2 in
+    projects) _nx_load_graph $1 && values=($_nx_projects) ;;
+    enum) values=(${=3}) ;;
+    boolean) values=(true false) ;;
+  esac
+  if (( $#values )); then
+    compadd -a values
+  else
+    _files
+  fi
+}
+
+# nx g <collection:generator> ...: the options of the generator and their values. Returns 1 for
+# everything else (the generator name, positional arguments), which Nx completes.
+(( $+functions[_nx_complete_generator] )) || _nx_complete_generator() { # <root>
+  [[ $words[2] == (g|generate) ]] || return 1
+  local spec cur=$words[CURRENT] prev=$words[CURRENT-1] line name
+  local -a fields names displays
+  local -A kinds values
+  integer i
+  for (( i = 3; i < CURRENT; i++ )); do
+    if [[ $words[i] != -* ]]; then
+      spec=$words[i]
+      break
+    fi
+  done
+  [[ -n $spec ]] && _nx_generator_schema $1 $spec && _nx_schema_options $REPLY || return 1
+
+  for line in $reply; do
+    fields=("${(@ps:\t:)line}")
+    kinds[$fields[1]]=$fields[2]
+    values[$fields[1]]=$fields[3]
+    names+=(--$fields[1])
+    displays+=("--$fields[1] -- $fields[4]")
+  done
+
+  if [[ $cur == --*=* ]]; then
+    name=${${cur%%=*}#--}
+    (( $+kinds[$name] )) || return 1
+    compset -P '*='
+    _nx_option_values $1 $kinds[$name] $values[$name]
+    return 0
+  fi
+  if [[ $prev == --?* && $cur != -* && -n $kinds[${prev#--}] && $kinds[${prev#--}] != boolean ]]; then
+    _nx_option_values $1 $kinds[${prev#--}] $values[${prev#--}]
+    return 0
+  fi
+  [[ $cur == -* ]] || return 1
+
+  # The flags of `nx generate` itself, as `nx g --help` lists them in Nx 23.
+  names+=(--dry-run --interactive --quiet --verbose --help)
+  displays+=(
+    '--dry-run -- Preview the changes without updating files.'
+    '--interactive -- When false disables interactive input prompts for options.'
+    '--quiet -- Hides logs from tree operations.'
+    '--verbose -- Prints additional information about the commands.'
+    '--help -- Show help'
+  )
+  compadd -l -d displays -a names
+  return 0
+}
+
+# Configurations: `nx run project:target:<Tab>` and the value of -c / --configuration after
+# `nx run`, `nx <target> [project]`, `nx run-many` and `nx affected`.
+(( $+functions[_nx_complete_configuration] )) || _nx_complete_configuration() { # <root>
+  local cur=$words[CURRENT] prev=$words[CURRENT-1] project word
+  local -a targets
+  local -aU found
+  integer i
+
+  if [[ $words[2] == run && CURRENT -eq 3 && $cur == *:*:* ]]; then
+    compset -P '*:*:'
+    _nx_load_graph $1 && _nx_configurations ${${cur#*:}%%:*} ${cur%%:*} && compadd -a reply
+    return 0
+  fi
+
+  [[ $words[2] == (g|generate) ]] && return 1
+  if [[ $cur == --configuration=* ]]; then
+    compset -P '*='
+  elif [[ $prev != (-c|--configuration) ]]; then
+    return 1
+  fi
+
+  case $words[2] in
+    run)
+      word=$words[3]
+      project=${word%%:*}
+      targets=(${${word#*:}%%:*})
+      ;;
+    run-many|affected)
+      for (( i = 3; i < CURRENT; i++ )); do
+        case $words[i] in
+          -t|--targets|--target) targets+=(${(s:,:)words[i+1]}) ;;
+          -t=*|--targets=*|--target=*) targets+=(${(s:,:)${words[i]#*=}}) ;;
+        esac
+      done
+      ;;
+    *)
+      targets=($words[2])
+      (( CURRENT > 3 )) && [[ $words[3] != -* ]] && project=$words[3]
+      ;;
+  esac
+
+  _nx_load_graph $1 || return 0
+  for word in $targets; do
+    _nx_configurations $word $project && found+=($reply)
+  done
+  compadd -a found
+  return 0
+}
+
+# Everything else comes from Nx; an older Nx or a workspace without node_modules gets file names.
+(( $+functions[_nx_complete_native] )) || _nx_complete_native() { # <root>
+  local nx line value nospace=0
+  local -a values displays
+  if ! _nx_native_bin $1; then
+    _files
+    return
+  fi
+  nx=$REPLY
+
+  # Nx prints `value<TAB>description` lines; `_describe` would split `project:target` at the colon.
+  for line in ${(f)"$(NX_COMPLETE=zsh $nx nx "${(@)words[2,CURRENT]}" 2>/dev/null)"}; do
+    value=${line%%$'\t'*}
+    values+=($value)
+    if [[ $line == *$'\t'* ]]; then
+      displays+=("$value -- ${line#*$'\t'}")
+    else
+      displays+=($value)
+    fi
+    [[ $value == *: ]] && nospace=1
+  done
+
+  if (( ! $#values )); then
+    _files
+  elif (( nospace )); then
+    compadd -S '' -d displays -a values
+  else
+    compadd -d displays -a values
+  fi
+}
+
+# The helpers hand their results back in REPLY and reply; keep them out of the global scope.
+local REPLY
+local -a reply
+if ! _nx_root; then
+  _default
+  return
+fi
+local root=$REPLY
+_nx_complete_generator $root && return 0
+_nx_complete_configuration $root && return 0
+_nx_complete_native $root
